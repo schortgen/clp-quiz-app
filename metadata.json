@@ -1,0 +1,5 @@
+{
+  "name": "CLP Quiz",
+  "description": "An interactive practice test application to help students study for their Commercial Learner's Permit (CLP) exams using AI-generated questions.",
+  "requestFramePermissions": []
+}
