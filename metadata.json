@@ -1,0 +1,8 @@
+{
+  "name": "CLP Quiz",
+  "description": "An interactive practice test application to help students study for their Commercial Learner's Permit (CLP) exams using AI-generated questions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
