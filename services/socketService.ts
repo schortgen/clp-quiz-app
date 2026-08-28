@@ -3,15 +3,31 @@ import type { GameRoomState } from '../types.ts';
 
 let socket: Socket | null = null;
 
+export const getSocketBaseUrl = (): string => {
+  if (import.meta.env.VITE_SOCKET_URL) {
+    return import.meta.env.VITE_SOCKET_URL.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const { hostname, origin } = window.location;
+    if (origin.includes('onrender.com') || hostname === 'localhost' || hostname === '127.0.0.1') {
+      return '';
+    }
+    // Default to the live Render multiplayer server when hosted on Netlify or elsewhere
+    return 'https://clp-quiz-app.onrender.com';
+  }
+  return '';
+};
+
 export const getSocket = (): Socket => {
   if (!socket) {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
-    socket = io(socketUrl, {
+    const baseUrl = getSocketBaseUrl();
+    socket = io(baseUrl || undefined, {
+      transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 8,
       reconnectionDelay: 1000,
-      timeout: 6000,
+      timeout: 10000,
     });
   }
   return socket;

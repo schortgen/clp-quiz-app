@@ -103,7 +103,8 @@ async function startServer() {
       origin: '*',
       methods: ['GET', 'POST'],
     },
-    pingTimeout: 5000,
+    transports: ['websocket', 'polling'],
+    pingTimeout: 10000,
     pingInterval: 5000,
   });
 

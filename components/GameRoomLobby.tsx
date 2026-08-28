@@ -7,6 +7,7 @@ import {
   selectRoomTopic,
   startRoomGame,
   leaveGameRoom,
+  getSocketBaseUrl,
 } from '../services/socketService.ts';
 import { Users, Crown, Sparkles, Play, ArrowLeft, Copy, Check, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -45,7 +46,7 @@ export const GameRoomLobby: React.FC<GameRoomLobbyProps> = ({
   const fetchActiveRooms = async () => {
     try {
       setLoadingRooms(true);
-      const baseUrl = import.meta.env.VITE_SOCKET_URL || '';
+      const baseUrl = getSocketBaseUrl();
       const res = await fetch(`${baseUrl}/api/active-rooms`);
       if (res.ok) {
         const contentType = res.headers.get('content-type');
