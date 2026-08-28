@@ -26,6 +26,7 @@ export interface GamePlayer {
   id: string;
   name: string;
   isHost: boolean;
+  isTeacher?: boolean;
   correctCount: number;
   wrongCount: number;
   hasAnswered: boolean;
@@ -35,6 +36,7 @@ export interface GamePlayer {
 }
 
 export type GameStatus = 'lobby' | 'in_quiz' | 'question_reveal' | 'finished';
+export type GameRoomType = 'standard' | 'classroom';
 
 export interface QuestionRevealData {
   correctAnswerIndex: number;
@@ -57,6 +59,7 @@ export interface GameRoomState {
   roomId: string;
   roomName: string;
   hostId: string;
+  roomType: GameRoomType;
   status: GameStatus;
   topicId: string;
   topicName: string;
@@ -66,6 +69,10 @@ export interface GameRoomState {
   currentQuestion?: {
     questionText: string;
     options: string[];
+    teacherAnswerKey?: {
+      correctAnswerIndex: number;
+      explanation?: string;
+    };
   };
   players: GamePlayer[];
   revealData: QuestionRevealData | null;

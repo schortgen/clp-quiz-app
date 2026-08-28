@@ -12,6 +12,7 @@ interface InternalRoom {
   roomId: string;
   roomName: string;
   hostId: string;
+  roomType: 'standard' | 'classroom';
   status: 'lobby' | 'in_quiz' | 'question_reveal' | 'finished';
   topicId: string;
   topicName: string;
@@ -48,6 +49,7 @@ const sanitizeRoomStateForClient = (room: InternalRoom): GameRoomState => {
     id: p.id,
     name: p.name,
     isHost: p.isHost,
+    isTeacher: !!p.isTeacher,
     correctCount: p.correctCount,
     wrongCount: p.wrongCount,
     hasAnswered: p.hasAnswered,
@@ -58,11 +60,15 @@ const sanitizeRoomStateForClient = (room: InternalRoom): GameRoomState => {
 
   const currentQ = room.questions[room.currentQuestionIndex];
 
-  let currentQuestionSummary: { questionText: string; options: string[] } | undefined;
+  let currentQuestionSummary: GameRoomState['currentQuestion'] | undefined;
   if (currentQ && (room.status === 'in_quiz' || room.status === 'question_reveal')) {
     currentQuestionSummary = {
       questionText: currentQ.questionText,
       options: currentQ.options,
+      teacherAnswerKey: {
+        correctAnswerIndex: currentQ.correctAnswerIndex,
+        explanation: currentQ.explanation,
+      },
     };
   }
 
@@ -80,6 +86,7 @@ const sanitizeRoomStateForClient = (room: InternalRoom): GameRoomState => {
     roomId: room.roomId,
     roomName: room.roomName,
     hostId: room.hostId,
+    roomType: room.roomType || 'standard',
     status: room.status,
     topicId: room.topicId,
     topicName: room.topicName,
@@ -127,13 +134,18 @@ async function startServer() {
   });
 
   app.get('/api/active-rooms', (req, res) => {
-    const list = Array.from(rooms.values()).map((r) => ({
-      roomId: r.roomId,
-      roomName: r.roomName,
-      status: r.status,
-      topicName: r.topicName,
-      playerCount: Array.from(r.players.values()).filter((p) => p.isOnline).length,
-    }));
+    const list = Array.from(rooms.values()).map((r) => {
+      const teacher = Array.from(r.players.values()).find((p) => p.isTeacher);
+      return {
+        roomId: r.roomId,
+        roomName: r.roomName,
+        roomType: r.roomType || 'standard',
+        teacherName: teacher ? teacher.name : undefined,
+        status: r.status,
+        topicName: r.topicName,
+        playerCount: Array.from(r.players.values()).filter((p) => p.isOnline).length,
+      };
+    });
     res.json(list);
   });
 
@@ -151,21 +163,27 @@ async function startServer() {
 
   const checkAndTriggerReveal = (room: InternalRoom, force: boolean = false) => {
     if (room.status !== 'in_quiz') return;
-    const onlinePlayers = Array.from(room.players.values()).filter(p => p.isOnline);
-    const offlinePlayers = Array.from(room.players.values()).filter(p => !p.isOnline);
-    
-    // If no players are online at all, don't reveal unless forced
-    if (onlinePlayers.length === 0 && !force) return;
+
+    // Filter students (players who are taking the test, excluding the teacher)
+    const allStudents = Array.from(room.players.values()).filter(p => !p.isTeacher);
+    const onlineStudents = allStudents.filter(p => p.isOnline);
+    const offlineStudents = allStudents.filter(p => !p.isOnline);
+
+    // If in classroom mode and there are no students at all yet, only reveal if forced by teacher
+    if (room.roomType === 'classroom' && allStudents.length === 0 && !force) {
+      return;
+    }
 
     if (!force) {
-      const allOnlineAnswered = onlinePlayers.length > 0 && onlinePlayers.every(p => p.hasAnswered);
-      if (!allOnlineAnswered) {
-        // Still waiting for online players to answer
+      // Check if online students have all answered
+      const allOnlineAnswered = onlineStudents.length > 0 && onlineStudents.every(p => p.hasAnswered);
+      if (!allOnlineAnswered && onlineStudents.length > 0) {
+        // Still waiting for online students to answer
         return;
       }
 
-      // If all online players answered, check if there are offline players who haven't answered yet
-      const unAnsweredOffline = offlinePlayers.filter(p => !p.hasAnswered);
+      // If all online students answered, check if there are offline students who haven't answered yet
+      const unAnsweredOffline = offlineStudents.filter(p => !p.hasAnswered);
       if (unAnsweredOffline.length > 0) {
         // Start 30-second countdown for offline players to reconnect if not already started
         if (!room.offlineTimer) {
@@ -192,13 +210,17 @@ async function startServer() {
     const currentQ = room.questions[room.currentQuestionIndex];
     if (!currentQ) return;
 
-    // Calculate answers & correctness for all players (including offline who may have answered earlier)
+    // Calculate answers & correctness for student players (excluding teacher from scoring)
     const playerAnswers: QuestionRevealData['playerAnswers'] = [];
     const correctPlayers: { id: string; name: string; timeMs: number }[] = [];
 
     for (const p of room.players.values()) {
-      // If player answered
-      if (p.hasAnswered && p.chosenIndex !== null) {
+      // Teachers do not answer or get graded
+      if (p.isTeacher) {
+        continue;
+      }
+
+      if (p.hasAnswered && p.chosenIndex !== null && p.chosenIndex !== undefined && p.chosenIndex >= 0) {
         const isCorrect = p.chosenIndex === currentQ.correctAnswerIndex;
         if (isCorrect) {
           p.correctCount += 1;
@@ -221,7 +243,7 @@ async function startServer() {
           timeMs: p.answerTimeMs ?? undefined,
         });
       } else {
-        // Player did not answer (e.g. disconnected or timed out)
+        // Student did not answer (e.g. disconnected or teacher revealed early)
         p.wrongCount += 1;
         playerAnswers.push({
           playerId: p.id,
@@ -251,58 +273,71 @@ async function startServer() {
     let currentRoomId: string | null = null;
     let currentPlayerName: string | null = null;
 
-    socket.on('create_room', (data: { roomName: string; playerName: string }, callback) => {
-      const roomName = data.roomName?.trim();
-      const playerName = data.playerName?.trim();
+    socket.on(
+      'create_room',
+      (
+        data: { roomName: string; playerName: string; isTeacher?: boolean; roomType?: 'standard' | 'classroom' },
+        callback
+      ) => {
+        const roomName = data.roomName?.trim();
+        const playerName = data.playerName?.trim();
+        const isTeacher = !!data.isTeacher;
+        const roomType = data.roomType || (isTeacher ? 'classroom' : 'standard');
 
-      if (!roomName || !playerName) {
-        return callback({ success: false, error: 'Room name and your name are required.' });
-      }
-
-      const roomId = roomName.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
-      if (rooms.has(roomId)) {
-        const existing = rooms.get(roomId)!;
-        const onlineCount = Array.from(existing.players.values()).filter(p => p.isOnline).length;
-        if (onlineCount > 0) {
-          return callback({ success: false, error: 'A room with this name already exists. Please join it or choose another name.' });
+        if (!roomName || !playerName) {
+          return callback({ success: false, error: 'Room name and your name are required.' });
         }
+
+        const roomId = roomName.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+        if (rooms.has(roomId)) {
+          const existing = rooms.get(roomId)!;
+          const onlineCount = Array.from(existing.players.values()).filter((p) => p.isOnline).length;
+          if (onlineCount > 0) {
+            return callback({
+              success: false,
+              error: 'A room with this name already exists. Please join it or choose another name.',
+            });
+          }
+        }
+
+        const defaultTopic = QUIZ_TOPICS[0];
+        const initialPlayer: GamePlayer = {
+          id: socket.id,
+          name: playerName,
+          isHost: true,
+          isTeacher,
+          correctCount: 0,
+          wrongCount: 0,
+          hasAnswered: false,
+          chosenIndex: null,
+          answerTimeMs: null,
+          isOnline: true,
+        };
+
+        const newRoom: InternalRoom = {
+          roomId,
+          roomName,
+          hostId: socket.id,
+          roomType,
+          status: 'lobby',
+          topicId: defaultTopic.id,
+          topicName: defaultTopic.name,
+          questionCount: defaultTopic.questionCount,
+          questions: [],
+          currentQuestionIndex: 0,
+          questionStartTime: 0,
+          players: new Map([[socket.id, initialPlayer]]),
+          revealData: null,
+        };
+
+        rooms.set(roomId, newRoom);
+        currentRoomId = roomId;
+        currentPlayerName = playerName;
+
+        socket.join(roomId);
+        callback({ success: true, room: sanitizeRoomStateForClient(newRoom) });
       }
-
-      const defaultTopic = QUIZ_TOPICS[0];
-      const initialPlayer: GamePlayer = {
-        id: socket.id,
-        name: playerName,
-        isHost: true,
-        correctCount: 0,
-        wrongCount: 0,
-        hasAnswered: false,
-        chosenIndex: null,
-        answerTimeMs: null,
-        isOnline: true,
-      };
-
-      const newRoom: InternalRoom = {
-        roomId,
-        roomName,
-        hostId: socket.id,
-        status: 'lobby',
-        topicId: defaultTopic.id,
-        topicName: defaultTopic.name,
-        questionCount: defaultTopic.questionCount,
-        questions: [],
-        currentQuestionIndex: 0,
-        questionStartTime: 0,
-        players: new Map([[socket.id, initialPlayer]]),
-        revealData: null,
-      };
-
-      rooms.set(roomId, newRoom);
-      currentRoomId = roomId;
-      currentPlayerName = playerName;
-
-      socket.join(roomId);
-      callback({ success: true, room: sanitizeRoomStateForClient(newRoom) });
-    });
+    );
 
     socket.on('join_room', (data: { roomName: string; playerName: string }, callback) => {
       const roomName = data.roomName?.trim();
@@ -431,7 +466,7 @@ async function startServer() {
       if (!room || room.status !== 'in_quiz') return;
 
       const player = room.players.get(socket.id);
-      if (!player || player.hasAnswered) return;
+      if (!player || player.hasAnswered || player.isTeacher) return;
 
       player.hasAnswered = true;
       player.chosenIndex = data.optionIndex;

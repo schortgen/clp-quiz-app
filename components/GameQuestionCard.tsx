@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import type { GameRoomState } from '../types.ts';
 import { submitRoomAnswer, advanceNextQuestion, forceRevealAnswers, kickPlayer } from '../services/socketService.ts';
-import { Zap, CheckCircle2, Clock, Crown, ArrowRight, Award, HelpCircle, WifiOff, FastForward, UserX } from 'lucide-react';
+import {
+  Zap,
+  CheckCircle2,
+  Clock,
+  Crown,
+  ArrowRight,
+  Award,
+  HelpCircle,
+  WifiOff,
+  FastForward,
+  GraduationCap,
+  Sparkles,
+  BookOpen,
+  Users,
+  Eye,
+  Check,
+  X,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface GameQuestionCardProps {
@@ -16,6 +33,9 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
   const isHost = room.hostId === currentSocketId;
   const isRevealed = room.status === 'question_reveal';
   const myPlayer = room.players.find((p) => p.id === currentSocketId);
+  const isTeacher = Boolean(myPlayer?.isTeacher);
+  const isClassroom = room.roomType === 'classroom';
+  const teacherPlayer = room.players.find((p) => p.isTeacher);
   const currentQ = room.currentQuestion;
 
   // Live timer for offline reconnect deadline
@@ -46,16 +66,16 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
     }
   }, [room.currentQuestionIndex, room.status]);
 
-  // Trigger celebration confetti if current player was first correct
+  // Trigger celebration confetti if current player was first correct (students only)
   useEffect(() => {
-    if (isRevealed && room.revealData?.firstCorrectPlayer?.id === currentSocketId) {
+    if (!isTeacher && isRevealed && room.revealData?.firstCorrectPlayer?.id === currentSocketId) {
       confetti({
         particleCount: 50,
         spread: 60,
         origin: { y: 0.7 },
       });
     }
-  }, [isRevealed, room.revealData, currentSocketId]);
+  }, [isRevealed, room.revealData, currentSocketId, isTeacher]);
 
   if (!currentQ) {
     return (
@@ -66,7 +86,7 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
   }
 
   const handleSelectOption = (index: number) => {
-    if (isRevealed || myPlayer?.hasAnswered || selectedOption !== null) return;
+    if (isTeacher || isRevealed || myPlayer?.hasAnswered || selectedOption !== null) return;
     setSelectedOption(index);
     submitRoomAnswer(index);
   };
@@ -82,13 +102,27 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
     }
   };
 
-  const answeredCount = room.players.filter((p) => p.isOnline && p.hasAnswered).length;
-  const totalOnline = room.players.filter((p) => p.isOnline).length;
+  // Student metrics
+  const studentPlayers = room.players.filter((p) => !p.isTeacher);
+  const onlineStudents = studentPlayers.filter((p) => p.isOnline);
+  const answeredStudents = studentPlayers.filter((p) => p.isOnline && p.hasAnswered);
+  const studentAnsweredCount = answeredStudents.length;
+  const totalStudentsOnline = onlineStudents.length;
   const questionNumber = room.currentQuestionIndex + 1;
   const totalQuestions = room.totalQuestions || room.questionCount;
-  const hasOfflinePlayers = room.players.some((p) => !p.isOnline);
+  const hasOfflineStudents = studentPlayers.some((p) => !p.isOnline);
+
+  const teacherKey = currentQ.teacherAnswerKey;
 
   const getOptionStyle = (index: number) => {
+    if (isTeacher) {
+      const isCorrectKey = teacherKey?.correctAnswerIndex === index;
+      if (isCorrectKey) {
+        return 'bg-green-950/60 border-green-500 text-green-100 ring-2 ring-green-500/40';
+      }
+      return 'bg-slate-800/80 border-slate-700 text-slate-300';
+    }
+
     if (!isRevealed) {
       if (selectedOption === index || (myPlayer?.hasAnswered && selectedOption === index)) {
         return 'bg-cyan-900/70 border-cyan-400 text-white shadow-lg ring-2 ring-cyan-500/50';
@@ -96,7 +130,7 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
       return 'bg-slate-800/90 border-slate-700 text-slate-100 sm:hover:bg-slate-700/80 sm:hover:border-slate-600 active:bg-slate-700/90';
     }
 
-    // Revealed state
+    // Revealed state for students
     const isCorrectAnswer = index === room.revealData?.correctAnswerIndex;
     const isMyPick = selectedOption === index;
 
@@ -111,7 +145,7 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
 
   return (
     <div className="w-full text-slate-100 animate-fade-in flex flex-col">
-      {/* Top Bar: Progress & Live Scoreboard */}
+      {/* Top Bar: Progress & Header */}
       <div className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold mb-2">
           <div className="flex items-center gap-2">
@@ -121,27 +155,41 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
             <span className="text-slate-500">•</span>
             <span className="text-slate-300 truncate max-w-[160px] sm:max-w-xs">{room.topicName}</span>
           </div>
-          <div className="text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
-            Room: <span className="text-cyan-400 font-bold">{room.roomName}</span>
+
+          <div className="flex items-center gap-2">
+            {isClassroom && (
+              <span className="text-xs px-2.5 py-1 rounded bg-purple-950 text-purple-300 border border-purple-800/60 flex items-center gap-1">
+                <GraduationCap className="w-3.5 h-3.5" />
+                {isTeacher ? 'Teacher Mode' : `Instructor: ${teacherPlayer ? teacherPlayer.name : 'Host'}`}
+              </span>
+            )}
+            <div className="text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+              Room: <span className="text-cyan-400 font-bold">{room.roomName}</span>
+            </div>
           </div>
         </div>
 
         {/* Progress bar */}
         <div className="w-full bg-slate-700/70 rounded-full h-2.5 mb-4">
           <div
-            className="bg-cyan-500 h-2.5 rounded-full transition-all duration-300"
+            className={`h-2.5 rounded-full transition-all duration-300 ${
+              isClassroom ? 'bg-gradient-to-r from-purple-500 to-cyan-500' : 'bg-cyan-500'
+            }`}
             style={{ width: `${(questionNumber / totalQuestions) * 100}%` }}
           />
         </div>
 
-        {/* Players Live Tracker */}
+        {/* Live Roster & Answering Monitor */}
         <div className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2 font-medium">
-            <span>PLAYER SCOREBOARD</span>
+            <span className="flex items-center gap-1.5 uppercase font-semibold text-slate-300">
+              {isClassroom ? <GraduationCap className="w-4 h-4 text-purple-400" /> : <Users className="w-4 h-4 text-cyan-400" />}
+              {isClassroom ? 'STUDENT ROSTER & SUBMISSION STATUS' : 'PLAYER SCOREBOARD'}
+            </span>
             <span>
               {!isRevealed ? (
                 <span className="text-cyan-300 font-bold">
-                  Answers: {answeredCount} / {totalOnline} online
+                  {isClassroom ? 'Students Submitted' : 'Answers'}: {studentAnsweredCount} / {totalStudentsOnline} online
                 </span>
               ) : (
                 <span className="text-green-400 font-bold">Answers Revealed!</span>
@@ -159,7 +207,9 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
                 <div
                   key={p.id}
                   className={`flex flex-col p-2 rounded-lg border text-xs transition relative group ${
-                    !isOnline
+                    p.isTeacher
+                      ? 'bg-purple-950/30 border-purple-500/40 text-purple-200'
+                      : !isOnline
                       ? 'bg-slate-900/50 border-red-900/40 opacity-70'
                       : isMe
                       ? 'bg-cyan-950/40 border-cyan-600/50'
@@ -168,9 +218,13 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
                 >
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-semibold text-slate-200 truncate flex items-center gap-1">
-                      {p.isHost && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />}
+                      {p.isTeacher ? (
+                        <GraduationCap className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                      ) : p.isHost ? (
+                        <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                      ) : null}
                       {p.name}
-                      {isMe && <span className="text-[10px] text-cyan-400">(You)</span>}
+                      {isMe && <span className="text-[10px] text-cyan-400 font-normal">(You)</span>}
                       {!isOnline && (
                         <span className="text-[10px] text-red-400 flex items-center gap-0.5 font-normal">
                           <WifiOff className="w-2.5 h-2.5" /> (Offline)
@@ -178,7 +232,11 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
                       )}
                     </span>
 
-                    {!isRevealed ? (
+                    {p.isTeacher ? (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.2 rounded bg-purple-900 text-purple-200 font-bold">
+                        Host
+                      </span>
+                    ) : !isRevealed ? (
                       hasAnswered ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
                       ) : isOnline ? (
@@ -189,30 +247,60 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
                     ) : null}
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px]">
-                    <div className="flex items-center gap-2">
-                      <span className="text-green-400 font-bold">✓ {p.correctCount}</span>
-                      <span className="text-red-400 font-bold">✗ {p.wrongCount}</span>
-                    </div>
+                  {!p.isTeacher && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-400 font-bold">✓ {p.correctCount}</span>
+                        <span className="text-red-400 font-bold">✗ {p.wrongCount}</span>
+                      </div>
 
-                    {/* Host kick/remove button if player disconnected */}
-                    {isHost && !isMe && !isOnline && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleKickPlayer(e, p.id, p.name)}
-                        className="text-[10px] text-red-400 hover:text-red-300 underline cursor-pointer ml-1"
-                        title="Remove disconnected player"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
+                      {/* Teacher/Host kick/remove button if student disconnected */}
+                      {isHost && !isMe && !isOnline && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleKickPlayer(e, p.id, p.name)}
+                          className="text-[10px] text-red-400 hover:text-red-300 underline cursor-pointer ml-1"
+                          title="Remove disconnected student"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
       </div>
+
+      {/* Teacher Station Info Banner if current user is Teacher */}
+      {isTeacher && (
+        <div className="bg-purple-950/40 border border-purple-600/50 rounded-xl p-3.5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm text-purple-200 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <GraduationCap className="w-5 h-5 text-purple-400 flex-shrink-0" />
+            <div>
+              <span className="font-bold text-white">Teacher Console: </span>
+              <span>
+                {!isRevealed
+                  ? `${studentAnsweredCount} of ${totalStudentsOnline} students submitted answers.`
+                  : 'Answers revealed to class. Review the explanation and click below when ready to advance.'}
+              </span>
+            </div>
+          </div>
+
+          {!isRevealed && (
+            <button
+              type="button"
+              onClick={handleForceReveal}
+              className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg text-xs sm:text-sm flex items-center gap-1.5 transition-transform transform hover:scale-105 cursor-pointer shadow-md whitespace-nowrap"
+            >
+              <Eye className="w-4 h-4" />
+              <span>Reveal Answers Now</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Question Text */}
       <h2 className="text-xl sm:text-2xl font-bold mb-6 text-center leading-relaxed text-white">
@@ -227,20 +315,30 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
             ? room.revealData.playerAnswers.filter((pa) => pa.chosenIndex === index)
             : [];
 
+          const isTeacherKey = isTeacher && teacherKey?.correctAnswerIndex === index;
+
           return (
             <button
               key={`${room.currentQuestionIndex}-${index}`}
               onClick={() => handleSelectOption(index)}
-              disabled={isRevealed || (myPlayer?.hasAnswered ?? false)}
+              disabled={isTeacher || isRevealed || (myPlayer?.hasAnswered ?? false)}
               className={`w-full p-4 rounded-xl text-left text-base sm:text-lg border transition-all duration-200 flex flex-col justify-between select-none outline-none focus:outline-none ${getOptionStyle(
                 index
-              )} ${!isRevealed && !myPlayer?.hasAnswered ? 'cursor-pointer' : 'cursor-default'}`}
+              )} ${!isTeacher && !isRevealed && !myPlayer?.hasAnswered ? 'cursor-pointer' : 'cursor-default'}`}
             >
-              <div className="flex items-start gap-3">
-                <span className="w-7 h-7 rounded-lg bg-slate-800/80 border border-slate-600/60 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0 mt-0.5">
-                  {String.fromCharCode(65 + index)}
-                </span>
-                <span className="leading-snug">{option}</span>
+              <div className="flex items-start justify-between gap-3 w-full">
+                <div className="flex items-start gap-3">
+                  <span className="w-7 h-7 rounded-lg bg-slate-800/80 border border-slate-600/60 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0 mt-0.5">
+                    {String.fromCharCode(65 + index)}
+                  </span>
+                  <span className="leading-snug">{option}</span>
+                </div>
+
+                {isTeacherKey && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-green-800/80 text-green-200 border border-green-600 font-bold whitespace-nowrap flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Correct Key
+                  </span>
+                )}
               </div>
 
               {/* Reveal Player badges */}
@@ -266,8 +364,19 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
         })}
       </div>
 
-      {/* Answering Status Banner when waiting */}
-      {!isRevealed && (
+      {/* Teacher Answer Key Explanation Preview (Visible to Teacher at all times so teacher can guide discussion) */}
+      {isTeacher && teacherKey?.explanation && (
+        <div className="p-4 bg-slate-900/90 border border-purple-800/40 rounded-xl mb-6 text-left">
+          <h3 className="font-bold text-purple-300 mb-1 text-sm flex items-center gap-1.5">
+            <BookOpen className="w-4 h-4 text-purple-400" />
+            Official CDL Explanation (Teacher Reference):
+          </h3>
+          <p className="text-slate-300 text-sm leading-relaxed">{teacherKey.explanation}</p>
+        </div>
+      )}
+
+      {/* Answering Status Banner when waiting (for students) */}
+      {!isTeacher && !isRevealed && (
         <div className="p-4 bg-slate-900/90 border border-slate-700/90 rounded-xl mb-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-center sm:text-left">
@@ -275,21 +384,23 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
                 <>
                   <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
                   <span className="font-semibold text-sm sm:text-base text-cyan-300">
-                    Your answer is submitted! Waiting for other players... ({answeredCount}/{totalOnline})
+                    {isClassroom
+                      ? `Your answer is submitted! Waiting for instructor to reveal results... (${studentAnsweredCount}/${totalStudentsOnline})`
+                      : `Your answer is submitted! Waiting for other players... (${studentAnsweredCount}/${totalStudentsOnline})`}
                   </span>
                 </>
               ) : (
                 <>
                   <Clock className="w-5 h-5 text-amber-400 animate-pulse flex-shrink-0" />
                   <span className="font-semibold text-sm sm:text-base text-slate-300">
-                    Choose your answer above — results reveal once everyone answers!
+                    Select your answer above before time or teacher moves ahead!
                   </span>
                 </>
               )}
             </div>
 
-            {/* Skip / Force Reveal button if player answered or if host wants to skip waiting */}
-            {(isHost || myPlayer?.hasAnswered) && (
+            {/* Skip / Force Reveal button for host or answered players in standard mode */}
+            {!isClassroom && (isHost || myPlayer?.hasAnswered) && (
               <button
                 type="button"
                 onClick={handleForceReveal}
@@ -317,16 +428,16 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
             </div>
           )}
 
-          {hasOfflinePlayers && secondsRemaining === null && (
+          {hasOfflineStudents && secondsRemaining === null && (
             <p className="text-[11px] text-slate-400 mt-2 text-center sm:text-left flex items-center gap-1">
               <WifiOff className="w-3.5 h-3.5 text-slate-400" />
-              An offline player is in the room. Answers will reveal automatically once online players submit, after a 30s reconnect window.
+              An offline student is in the room. Answers will reveal automatically once online students submit, after a 30s reconnect window.
             </p>
           )}
         </div>
       )}
 
-      {/* Revealed Section: First Correct Winner & Explanation */}
+      {/* Revealed Section: First Correct Winner & Explanation (for students & class) */}
       {isRevealed && room.revealData && (
         <div className="space-y-4 mb-6 animate-fade-in">
           {/* Winner Banner */}
@@ -362,8 +473,8 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
             </div>
           )}
 
-          {/* Explanation Box */}
-          {room.revealData.explanation && (
+          {/* Explanation Box for Students */}
+          {!isTeacher && room.revealData.explanation && (
             <div className="p-4 bg-slate-900/90 border border-slate-700 rounded-xl text-left">
               <h3 className="font-bold text-cyan-400 mb-1.5 text-sm flex items-center gap-1.5">
                 Official CDL Explanation
@@ -374,21 +485,37 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
         </div>
       )}
 
-      {/* Host / Player Next Action Controls */}
+      {/* Advance Next Question Controls */}
       {isRevealed && (
         <div className="text-center pt-2">
           {isHost ? (
             <button
               onClick={advanceNextQuestion}
-              className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3.5 px-8 rounded-xl text-lg flex items-center justify-center gap-2 mx-auto shadow-lg shadow-cyan-500/20 transition-transform transform hover:scale-105 cursor-pointer"
+              className={`text-white font-bold py-3.5 px-8 rounded-xl text-lg flex items-center justify-center gap-2 mx-auto shadow-lg transition-transform transform hover:scale-105 cursor-pointer ${
+                isTeacher
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-500/20'
+                  : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-500/20'
+              }`}
             >
-              <span>{questionNumber === totalQuestions ? 'View Final Results' : 'Next Question'}</span>
+              <span>
+                {questionNumber === totalQuestions
+                  ? isTeacher
+                    ? 'Finish Session & View Class Grades'
+                    : 'View Final Results'
+                  : isTeacher
+                  ? 'Advance Class to Next Question'
+                  : 'Next Question'}
+              </span>
               <ArrowRight className="w-5 h-5" />
             </button>
           ) : (
             <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-2">
               <Clock className="w-4 h-4 text-cyan-400 animate-spin" />
-              <span>Waiting for room host ({room.players.find((p) => p.isHost)?.name || 'Host'}) to advance...</span>
+              <span>
+                {isClassroom
+                  ? `Waiting for Instructor (${teacherPlayer ? teacherPlayer.name : 'Teacher'}) to move to the next question...`
+                  : `Waiting for room host (${room.players.find((p) => p.isHost)?.name || 'Host'}) to advance...`}
+              </span>
             </div>
           )}
         </div>
@@ -396,3 +523,4 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
     </div>
   );
 };
+

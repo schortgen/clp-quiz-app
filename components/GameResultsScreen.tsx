@@ -14,6 +14,8 @@ import {
   Check,
   Printer,
   Sparkles,
+  GraduationCap,
+  Users,
 } from 'lucide-react';
 
 interface GameResultsScreenProps {
@@ -29,25 +31,38 @@ export const GameResultsScreen: React.FC<GameResultsScreenProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const isHost = room.hostId === currentSocketId;
+  const isClassroom = room.roomType === 'classroom';
+  const myPlayer = room.players.find((p) => p.id === currentSocketId);
+  const isTeacher = Boolean(myPlayer?.isTeacher);
+  const teacherPlayer = room.players.find((p) => p.isTeacher);
   const totalQuestions = room.totalQuestions || room.questionCount;
 
-  // Sort players by correct count descending
-  const sortedPlayers = [...room.players].sort((a, b) => {
+  // Filter students vs teachers for leaderboard
+  const studentPlayers = room.players.filter((p) => !p.isTeacher);
+  const sortedStudents = [...studentPlayers].sort((a, b) => {
     if (b.correctCount !== a.correctCount) {
       return b.correctCount - a.correctCount;
     }
     return a.wrongCount - b.wrongCount;
   });
 
+  const classTotalCorrect = studentPlayers.reduce((acc, p) => acc + p.correctCount, 0);
+  const classPossibleAnswers = studentPlayers.length * totalQuestions;
+  const classAveragePct =
+    classPossibleAnswers > 0 ? Math.round((classTotalCorrect / classPossibleAnswers) * 100) : 0;
+
   const handlePrint = () => {
     window.print();
   };
 
   const generateResultsSummaryText = () => {
-    const topicHeader = `=== CLP QUIZ RESULTS: ${room.topicName.toUpperCase()} ===\nRoom: ${room.roomName}\nTotal Questions: ${totalQuestions}\n\n`;
+    const topicHeader = `=== CLP QUIZ RESULTS: ${room.topicName.toUpperCase()} ===\nRoom: ${room.roomName} ${
+      isClassroom ? `(Classroom Session - Instructor: ${teacherPlayer?.name || 'Teacher'})` : ''
+    }\nTotal Questions: ${totalQuestions}\n\n`;
 
-    const leaderboardText = `--- GROUP LEADERBOARD ---\n` +
-      sortedPlayers
+    const leaderboardText =
+      `--- ${isClassroom ? 'CLASSROOM STUDENT ROSTER & GRADES' : 'GROUP LEADERBOARD'} ---\n` +
+      sortedStudents
         .map((p, index) => {
           const pct = totalQuestions > 0 ? Math.round((p.correctCount / totalQuestions) * 100) : 0;
           const medal = index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index + 1}th`;
@@ -91,22 +106,65 @@ export const GameResultsScreen: React.FC<GameResultsScreenProps> = ({
       <div className="no-print w-full flex flex-col items-center">
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
-          <Trophy className="w-8 h-8 text-amber-400" />
-          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-wide">Test Completed!</h2>
+          {isClassroom ? (
+            <GraduationCap className="w-8 h-8 text-purple-400" />
+          ) : (
+            <Trophy className="w-8 h-8 text-amber-400" />
+          )}
+          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-wide">
+            {isClassroom ? 'Classroom Session Complete!' : 'Test Completed!'}
+          </h2>
         </div>
-        <p className="text-slate-400 text-sm mb-6">
-          Room <span className="text-cyan-400 font-semibold">{room.roomName}</span> • {room.topicName} ({totalQuestions} Questions)
+        <p className="text-slate-400 text-sm mb-6 flex items-center gap-2">
+          <span>
+            Room <span className="text-cyan-400 font-semibold">{room.roomName}</span> • {room.topicName} ({totalQuestions} Questions)
+          </span>
+          {isClassroom && teacherPlayer && (
+            <span className="text-purple-300 font-medium">• Instructor: {teacherPlayer.name}</span>
+          )}
         </p>
+
+        {/* Classroom Summary Stat Box if Classroom Mode */}
+        {isClassroom && studentPlayers.length > 0 && (
+          <div className="w-full bg-purple-950/40 border border-purple-800/60 rounded-xl p-4 mb-6 flex flex-wrap items-center justify-around gap-4 text-center">
+            <div>
+              <span className="text-xs uppercase text-purple-300 font-bold block">Class Average</span>
+              <span
+                className={`text-2xl font-extrabold ${
+                  classAveragePct >= 80
+                    ? 'text-green-400'
+                    : classAveragePct >= 70
+                    ? 'text-yellow-400'
+                    : 'text-red-400'
+                }`}
+              >
+                {classAveragePct}%
+              </span>
+            </div>
+            <div className="h-8 w-px bg-purple-800/60 hidden sm:block" />
+            <div>
+              <span className="text-xs uppercase text-purple-300 font-bold block">Students Completed</span>
+              <span className="text-2xl font-extrabold text-white">{studentPlayers.length}</span>
+            </div>
+            <div className="h-8 w-px bg-purple-800/60 hidden sm:block" />
+            <div>
+              <span className="text-xs uppercase text-purple-300 font-bold block">Passing Grade (80%)</span>
+              <span className="text-2xl font-extrabold text-cyan-300">
+                {studentPlayers.filter((s) => (s.correctCount / (totalQuestions || 1)) >= 0.8).length} / {studentPlayers.length}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Leaderboard Table */}
         <div className="w-full bg-slate-900/80 border border-slate-700 rounded-2xl p-5 mb-8 shadow-xl">
           <h3 className="text-base font-bold uppercase tracking-wider text-cyan-400 mb-4 flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Final Group Scoreboard
+            {isClassroom ? <GraduationCap className="w-4 h-4 text-purple-400" /> : <Sparkles className="w-4 h-4" />}
+            {isClassroom ? 'Student Grades & Performance' : 'Final Group Scoreboard'}
           </h3>
 
           <div className="space-y-3">
-            {sortedPlayers.map((player, index) => {
+            {sortedStudents.map((player, index) => {
               const isMe = player.id === currentSocketId;
               const pct = totalQuestions > 0 ? Math.round((player.correctCount / totalQuestions) * 100) : 0;
               const isWinner = index === 0;
@@ -115,7 +173,7 @@ export const GameResultsScreen: React.FC<GameResultsScreenProps> = ({
                 <div
                   key={player.id}
                   className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl border transition ${
-                    isWinner
+                    isWinner && !isClassroom
                       ? 'bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-slate-900 border-amber-500/50'
                       : isMe
                       ? 'bg-cyan-950/40 border-cyan-500/40'
@@ -170,6 +228,10 @@ export const GameResultsScreen: React.FC<GameResultsScreenProps> = ({
                 </div>
               );
             })}
+
+            {sortedStudents.length === 0 && (
+              <p className="text-slate-400 text-sm text-center py-4">No student participants in this session.</p>
+            )}
           </div>
         </div>
 
@@ -197,28 +259,32 @@ export const GameResultsScreen: React.FC<GameResultsScreenProps> = ({
           {isHost ? (
             <div className="bg-slate-900/90 border border-slate-700 p-4 rounded-xl space-y-3">
               <div className="text-xs font-semibold text-cyan-400 uppercase tracking-wider text-left">
-                Host Room Options
+                {isTeacher ? 'Teacher Session Options' : 'Host Room Options'}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={retestGame}
-                  className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-xl text-base flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-transform transform hover:scale-[1.02] cursor-pointer"
+                  className={`text-white font-bold py-3 px-4 rounded-xl text-base flex items-center justify-center gap-2 shadow-lg transition-transform transform hover:scale-[1.02] cursor-pointer ${
+                    isTeacher
+                      ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'
+                      : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-500/20'
+                  }`}
                 >
                   <RotateCcw className="w-5 h-5" />
-                  Retest Same Test
+                  {isTeacher ? 'Retest Topic with Class' : 'Retest Same Test'}
                 </button>
                 <button
                   onClick={changeGameTest}
                   className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-base flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 transition-transform transform hover:scale-[1.02] cursor-pointer"
                 >
                   <BookOpen className="w-5 h-5" />
-                  Take a Different Test
+                  {isTeacher ? 'Select Another Topic for Class' : 'Take a Different Test'}
                 </button>
               </div>
             </div>
           ) : (
             <div className="bg-slate-900/70 border border-slate-700 p-4 rounded-xl text-center text-sm text-slate-400">
-              Waiting for the host ({room.players.find((p) => p.isHost)?.name || 'Host'}) to restart or pick a new test...
+              Waiting for {teacherPlayer ? `Instructor (${teacherPlayer.name})` : `Host (${room.players.find((p) => p.isHost)?.name || 'Host'})`} to restart or select a new test...
             </div>
           )}
 

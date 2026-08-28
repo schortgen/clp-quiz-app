@@ -35,7 +35,9 @@ export const getSocket = (): Socket => {
 
 export const createGameRoom = (
   roomName: string,
-  playerName: string
+  playerName: string,
+  isTeacher: boolean = false,
+  roomType: 'standard' | 'classroom' = 'standard'
 ): Promise<{ success: boolean; room?: GameRoomState; error?: string }> => {
   const s = getSocket();
   return new Promise((resolve) => {
@@ -50,10 +52,14 @@ export const createGameRoom = (
       s.connect();
     }
 
-    s.emit('create_room', { roomName, playerName }, (res: { success: boolean; room?: GameRoomState; error?: string }) => {
-      clearTimeout(timer);
-      resolve(res);
-    });
+    s.emit(
+      'create_room',
+      { roomName, playerName, isTeacher, roomType },
+      (res: { success: boolean; room?: GameRoomState; error?: string }) => {
+        clearTimeout(timer);
+        resolve(res);
+      }
+    );
   });
 };
 
