@@ -112,32 +112,25 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
   const totalQuestions = room.totalQuestions || room.questionCount;
   const hasOfflineStudents = studentPlayers.some((p) => !p.isOnline);
 
-  const teacherKey = currentQ.teacherAnswerKey;
-
   const getOptionStyle = (index: number) => {
-    if (isTeacher) {
-      const isCorrectKey = teacherKey?.correctAnswerIndex === index;
-      if (isCorrectKey) {
-        return 'bg-green-950/60 border-green-500 text-green-100 ring-2 ring-green-500/40';
-      }
-      return 'bg-slate-800/80 border-slate-700 text-slate-300';
-    }
-
     if (!isRevealed) {
+      if (isTeacher) {
+        return 'bg-slate-800/90 border-slate-700 text-slate-100 cursor-default';
+      }
       if (selectedOption === index || (myPlayer?.hasAnswered && selectedOption === index)) {
         return 'bg-cyan-900/70 border-cyan-400 text-white shadow-lg ring-2 ring-cyan-500/50';
       }
       return 'bg-slate-800/90 border-slate-700 text-slate-100 sm:hover:bg-slate-700/80 sm:hover:border-slate-600 active:bg-slate-700/90';
     }
 
-    // Revealed state for students
+    // Revealed state (all players have selected or host revealed)
     const isCorrectAnswer = index === room.revealData?.correctAnswerIndex;
     const isMyPick = selectedOption === index;
 
     if (isCorrectAnswer) {
       return 'bg-green-950/70 border-green-400 text-green-100 ring-2 ring-green-500/60 shadow-lg font-medium';
     }
-    if (isMyPick && !isCorrectAnswer) {
+    if (!isTeacher && isMyPick && !isCorrectAnswer) {
       return 'bg-red-950/70 border-red-500 text-red-200 ring-1 ring-red-500/40';
     }
     return 'bg-slate-800/50 border-slate-700/60 text-slate-400 opacity-60';
@@ -315,7 +308,7 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
             ? room.revealData.playerAnswers.filter((pa) => pa.chosenIndex === index)
             : [];
 
-          const isTeacherKey = isTeacher && teacherKey?.correctAnswerIndex === index;
+          const isCorrectAnswer = isRevealed && room.revealData?.correctAnswerIndex === index;
 
           return (
             <button
@@ -334,9 +327,9 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
                   <span className="leading-snug">{option}</span>
                 </div>
 
-                {isTeacherKey && (
+                {isCorrectAnswer && (
                   <span className="text-xs px-2 py-0.5 rounded bg-green-800/80 text-green-200 border border-green-600 font-bold whitespace-nowrap flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" /> Correct Key
+                    <Check className="w-3.5 h-3.5" /> Correct Answer
                   </span>
                 )}
               </div>
@@ -363,17 +356,6 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
           );
         })}
       </div>
-
-      {/* Teacher Answer Key Explanation Preview (Visible to Teacher at all times so teacher can guide discussion) */}
-      {isTeacher && teacherKey?.explanation && (
-        <div className="p-4 bg-slate-900/90 border border-purple-800/40 rounded-xl mb-6 text-left">
-          <h3 className="font-bold text-purple-300 mb-1 text-sm flex items-center gap-1.5">
-            <BookOpen className="w-4 h-4 text-purple-400" />
-            Official CDL Explanation (Teacher Reference):
-          </h3>
-          <p className="text-slate-300 text-sm leading-relaxed">{teacherKey.explanation}</p>
-        </div>
-      )}
 
       {/* Answering Status Banner when waiting (for students) */}
       {!isTeacher && !isRevealed && (
@@ -473,11 +455,16 @@ export const GameQuestionCard: React.FC<GameQuestionCardProps> = ({ room, curren
             </div>
           )}
 
-          {/* Explanation Box for Students */}
-          {!isTeacher && room.revealData.explanation && (
+          {/* Explanation Box (Shown once answers are revealed) */}
+          {room.revealData.explanation && (
             <div className="p-4 bg-slate-900/90 border border-slate-700 rounded-xl text-left">
-              <h3 className="font-bold text-cyan-400 mb-1.5 text-sm flex items-center gap-1.5">
-                Official CDL Explanation
+              <h3
+                className={`font-bold mb-1.5 text-sm flex items-center gap-1.5 ${
+                  isTeacher ? 'text-purple-300' : 'text-cyan-400'
+                }`}
+              >
+                {isTeacher && <BookOpen className="w-4 h-4 text-purple-400" />}
+                Official CDL Explanation {isTeacher ? '(Classroom Review)' : ''}
               </h3>
               <p className="text-slate-300 text-sm leading-relaxed">{room.revealData.explanation}</p>
             </div>

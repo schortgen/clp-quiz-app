@@ -69,10 +69,6 @@ export interface GameRoomState {
   currentQuestion?: {
     questionText: string;
     options: string[];
-    teacherAnswerKey?: {
-      correctAnswerIndex: number;
-      explanation?: string;
-    };
   };
   players: GamePlayer[];
   revealData: QuestionRevealData | null;

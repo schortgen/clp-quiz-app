@@ -65,10 +65,6 @@ const sanitizeRoomStateForClient = (room: InternalRoom): GameRoomState => {
     currentQuestionSummary = {
       questionText: currentQ.questionText,
       options: currentQ.options,
-      teacherAnswerKey: {
-        correctAnswerIndex: currentQ.correctAnswerIndex,
-        explanation: currentQ.explanation,
-      },
     };
   }
 
