@@ -47,8 +47,8 @@ export const GameRoomLobby: React.FC<GameRoomLobbyProps> = ({
   onBackToMenu,
   currentSocketId,
 }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
-  const [roomMode, setRoomMode] = useState<'classroom' | 'standard'>('classroom');
+  const [activeTab, setActiveTab] = useState<'create' | 'join'>('join');
+  const [roomMode, setRoomMode] = useState<'classroom' | 'standard'>('standard');
   const [roomNameInput, setRoomNameInput] = useState('');
   const [playerNameInput, setPlayerNameInput] = useState(() => {
     return localStorage.getItem('clp_player_name') || '';
